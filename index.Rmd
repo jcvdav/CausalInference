@@ -30,7 +30,7 @@ storks <- read.csv("Data/storks.csv")
 
 # About the course
 
-This course was part of the pre-conference workshops at the International Congress for Conservation Biology, in Cartagen Colombia. The course was given by Dr. Achaz von Hardenberg [\@achazhardenberg](https://twitter.com/achazhardenberg).
+This course was part of the pre-conference workshops at the International Congress for Conservation Biology, in Cartagena, Colombia. The course was given by Dr. Achaz von Hardenberg [\@achazhardenberg](https://twitter.com/achazhardenberg).
 
 Subjects on causal inference, path analalysis and bayesian inference were covered.
 
@@ -99,7 +99,28 @@ A full explanation on the grammar of path analysis is found in [Achaz's material
 
 From his model:
 
-![Causal path of 6 variables](./Figures/model.png)
+```{r}
+DiagrammeR::grViz("
+      digraph boxes_and_circles{
+
+# Define nodes
+node [shape = square
+      penwidth = 2,
+      fontsize = 24]
+
+A; B; C; D; E; F
+
+# Add edge statements
+#Advaance classes
+A -> B
+B -> C
+B -> D
+E -> C
+E -> D
+F -> E
+}
+      ", height = 500)
+```
 
 A is:
 
