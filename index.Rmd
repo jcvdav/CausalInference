@@ -3,7 +3,7 @@ title: "Causal Inference for Conservation Biologists"
 author: "Villaseñor-Derbez, J.C."
 date: "22 de julio de 2017"
 output: 
-  html_notebook: 
+  html_document:
     fig_caption: yes
     toc: yes
     toc_float: yes
@@ -17,6 +17,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r load packages}
 suppressPackageStartupMessages({
   library(piecewiseSEM)
+  library(magrittr)
   library(tidyverse)
   library(stargazer)
   library(broom)
@@ -315,12 +316,12 @@ Where:
 C follows a $\chi^2$ distribution, with 2k degrees of freedom: `1-pchisq(C,2*k)`
 
 ```{r}
-
 extract_p <- function(model, coeff){
   tidy(model) %>%
     filter(term == coeff) %>%
     select(p.value)
 }
+
 ppath1 <- extract_p(path1, "A")
 ppath2 <- extract_p(path2, "S")
 ppath3 <- extract_p(path3, "S")
