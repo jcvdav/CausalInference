@@ -4,10 +4,11 @@ author: "Villaseñor-Derbez, J.C."
 date: "22 de julio de 2017"
 output: 
   html_notebook:
+    code_folding: hide
     fig_caption: yes
     toc: yes
-    toc_float: yes
     toc_collapse: no
+    toc_float: yes
 ---
 
 ```{r setup, include=FALSE}
