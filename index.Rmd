@@ -3,7 +3,7 @@ title: "Causal Inference for Conservation Biologists"
 author: "Villaseñor-Derbez, J.C."
 date: "22 de julio de 2017"
 output: 
-  html_document:
+  html_notebook:
     fig_caption: yes
     toc: yes
     toc_float: yes
