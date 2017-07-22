@@ -1,0 +1,354 @@
+---
+title: "Causal Inference for Conservation Biologists"
+author: "Villaseñor-Derbez, J.C."
+date: "22 de julio de 2017"
+output: 
+  html_notebook: 
+    fig_caption: yes
+    toc: yes
+    toc_float: yes
+    toc_collapse: no
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+suppressPackageStartupMessages({
+  library(piecewiseSEM)
+  library(tidyverse)
+  library(stargazer)
+  library(broom)
+})
+```
+
+```{r}
+storks <- read.csv("Data/storks.csv")
+```
+
+# About the course
+
+This course was part of the pre-conference workshops at the International Congress for Conservation Biology, in Cartagen Colombia. The course was given by Dr. Achaz von Hardenberg [\@achazhardenberg](https://twitter.com/achazhardenberg).
+
+Subjects on causal inference, path analalysis and bayesian inference were covered.
+
+# Storks deliver babies (p = 0.0079)
+
+> The scientist's mantra: *"Correlation does not imply causation"*
+
+## Plot
+
+```{r}
+ggplot(data = storks, mapping=aes(x = Storks, y = Birth)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "black") +
+  theme_bw() +
+  labs(x = "Number of breeding stork pairs", y = "Human birth rate (thousands/year)")
+```
+
+## Linear model
+
+```{r, results = "asis"}
+lm(Birth ~ Storks, data = storks) %>% 
+  stargazer(single.row = T, type = "html", dep.var.labels = "Human birth rate *thousands / year)")
+```
+
+## Other variables
+
+Other variables appear to be correlated, so we can inspect their correlation and include relevant ones in the model.
+
+```{r}
+library(corrplot)
+
+corrplot(cor(storks[,-1]), method="ellipse", type="lower")
+```
+
+```{r, results = "asis", message = F}
+lm1 <- lm(Birth ~ Storks, storks)
+lm2 <- lm(Area ~ Storks, storks)
+lm3 <- lm(Birth ~ Area, storks)
+lm4 <- lm(Birth ~ Area + Storks, storks)
+
+stargazer(lm1, lm2, lm3, lm4, type ="html", single.row = T, add.lines = list(AIC = c("AIC", formatC(AIC(lm1, lm2, lm3, lm4)[,2], digits = 2, format = "f"))))
+
+```
+
+After including `Area`, for example, we observe that the effect of `Storks` significantly decreases.
+
+> Correlation imples and unresolved causal structure
+
+Once we have identified processes, we can start to imply causation:
+
+> Causality always imples a completely resolved correlation structure
+
+# Path analysis
+
+Limitations of commonly employed statistical methods (*i.e.* multiple linear regression):
+
+- Can only analyze one dependent variable at a time
+
+- A particular variable can either be a predictor or a response
+
+*"Path analysis is an extension of multiple regression, and was developed to overcome these limitations"*
+
+In path analysis, we call each variable a vertex (or vertices, in plural) and their connections are called edges. Directed graphs include directions (*i.e.* the edges are arrow that define direction). In Indirect graphs, edges only connect vertices, but do not specify the direction of influence.
+
+A full explanation on the grammar of path analysis is found in [Achaz's materials]("Causal inference Cartagena .pdf")
+
+From his model:
+
+![Causal path of 6 variables](./Figures/model.png)
+
+A is:
+
+- direct cause of B
+
+- indirect cause of C and F
+
+B is:
+
+- caused by A
+
+C and D are:
+
+- indirectly independent on A and F
+
+- directly dependent on B and E
+
+E is:
+
+- directly dependent on F
+
+F is:
+
+- direct cause of E
+
+- Indirect cause of C and F
+
+In the case above, B is an active vertex, becauser it is bot an effect (of A) and a cause (of C or D). Similarly, D is an inactive vertez, which is only an effect of 1 or more other vertices, but not a cause of anything. Often, we try to understand relationships between D and A, leaving out B.
+
+### Exercise
+
+Drawa causal graph with 6 variables:
+
+- (fromAtoF)where:
+
+- A is direct cause of B
+
+- C is a causal child of B
+
+- D is directly dependent on B and C
+
+- F is directly dependent on D and E
+
+```{r}
+DiagrammeR::grViz("
+      digraph boxes_and_circles{
+
+# Define nodes
+node [shape = square
+      penwidth = 2,
+      fontsize = 24]
+
+A; B; C; D; E; F
+
+# Add edge statements
+#Advaance classes
+A -> B
+B -> C
+C -> D
+B -> D
+D -> F
+E -> F
+
+}
+      ", height = 500)
+```
+
+To start transforming this into statistical models, we perform d-separation:
+
+1. First, we identify all pairs of not adjacent vertices (*i.e. not connected by a direct arrow*)
+
+```{r}
+d_separ <- data.frame(Pairs = c("C,D","A,C", "A,D", "A,E", "A,F", "B,E","B,F", "C,F","D,F"))
+
+d_separ
+```
+
+2. Then, we identify the parents of any of the vertices of each pair
+
+```{r}
+
+d_separ <- data.frame(Pairs = c("C,D","A,C", "A,D", "A,E", "A,F", "B,E","B,F", "C,F","D,F"),
+                      Parents = c("B,E", "B", "B,E", "F", "None", "A, F", "A", "B,E", "B,E"))
+
+d_separ
+```
+
+3. The D-separation statements are therefore:
+
+```{r}
+d_separ %>% 
+  mutate(D_separation = paste0("(", Pairs, ")", ", {", Parents, "}"))
+```
+
+The number of elements in the basis test should be given by
+
+$$\frac{V!}{2(V-2)!}-A$$
+
+In R code, we can define a function for this as:
+
+```{r}
+numbers <- function(V, A){
+  n <- (factorial(V)/(2*factorial((V-2))))-A
+  return(n)
+}
+```
+
+Where:
+
+- V is the number of vertices
+
+-A is the number of arrows
+
+4. Test probabilistic conditionals of every d-separation statement
+
+```{r}
+d_separ %>% 
+  mutate(D_separation = paste0("(", Pairs, ")", ", {", Parents, "}"),
+         Claims = c("D ~ B + E + C", "C ~ B + A", "D ~ B + E + A", "E ~ F + A", "F ~ A", "E ~ A + F + B", "F ~ B + A", "F ~ B + E + C", "F ~ B + E + D"))
+
+```
+
+We then use Fisher's C test to test the composite probability of the whole set.
+ 
+# Re-visit storks and births
+ 
+With a model of the sape:
+ 
+ 
+ 
+```{r}
+DiagrammeR::grViz("
+      digraph boxes_and_circles{
+
+# Define nodes
+node [shape = square
+      penwidth = 2,
+      fontsize = 24]
+
+A; S; B; I
+
+# Add edge statements
+#Advaance classes
+A -> S
+A -> B
+B -> I
+
+}
+      ", height = 500)
+```
+
+Where:
+
+-  A = Area
+
+- S = Storks
+
+- B = Birth rate
+
+- I = Inhabitants
+
+Using the formula above, we know that we need to identify `r numbers(4, 3)` pairs.
+
+Using the steps above, we must identify all non-adjacent pairs
+
+```{r}
+storke_pairs <- data.frame(Pairs = c("A, I", "S, B", "S,I"))
+
+storke_pairs
+```
+
+Identify all parents of each pair
+
+```{r}
+storke_pairs <- data.frame(Pairs = c("A, I", "S, B", "S,I"),
+                           Parents = c("B", "A", "A, B"))
+
+storke_pairs
+```
+
+The d-separation statements are then:
+```{r}
+storke_pairs %>% 
+  mutate(D_separation = paste0("(", Pairs, ")", ", {", Parents, "}"))
+```
+
+Test the probabilistic conditional dependence of every d-statement with the following claims:
+
+```{r}
+storke_pairs %>% 
+  mutate(D_separation = paste0("(", Pairs, ")", ", {", Parents, "}"),
+         Claims = c("I ~ B + A", "B ~ A + S", "I ~ A + B + I"))
+```
+
+Evaluate the models:
+
+```{r, results = "asis"}
+
+colnames(storks) <- c("Country", "A", "S", "I", "B")
+path1 <- lm(I ~ B + A, storks)
+path2 <- lm(B ~ A + S, storks)
+path3 <- lm(I ~ A + B + S, storks)
+
+stargazer(path1, path2, path3, type = "html", report = c("vcp"), single.row = T)
+```
+
+Using Fisher's C:
+
+$$C = -2\sum_{i = 1}^{k{}} log(p_i)$$
+Where:
+
+-  p is the rpobability of the term for wich we are testing independence (*i.e.* the other vertix from the non-adjancet verrix pairs)
+
+C follows a $\chi^2$ distribution, with 2k degrees of freedom: `1-pchisq(C,2*k)`
+
+```{r}
+
+extract_p <- function(model, coeff){
+  tidy(model) %>%
+    filter(term == coeff) %>%
+    select(p.value)
+}
+ppath1 <- extract_p(path1, "A")
+ppath2 <- extract_p(path2, "S")
+ppath3 <- extract_p(path3, "S")
+
+C <- rbind(ppath1, ppath2, ppath3) %>% 
+  mutate(logs = log(p.value)) %$%
+  sum(logs)
+
+C <-  -2*C
+
+test <- 1-pchisq(C,2*3)
+```
+
+
+Thus, the probability is *p = * `r test`.
+
+# Some R-packages for all this
+
+## `piecewiseSEM`
+
+Here, we only specify the dependent paths as within an `lm()` call. For example, in this model, I is caused by B, so we call `lm(B~I)`. We include each lm call inside a list, and pass that to `sem.fit`, which will identify the missing paths, and do all the calculations.
+
+```{r}
+storks_model <- list(
+  lm(S ~ A, storks),
+  lm(B ~ A, storks),
+  lm(I ~ B, storks)) %>% 
+  sem.fit(data = storks, .progressBar = F, conditional = T) %>% 
+  knitr::kable()
+```
+
